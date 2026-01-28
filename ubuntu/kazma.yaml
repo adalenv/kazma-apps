@@ -1,0 +1,18 @@
+name: "Ubuntu Desktop"
+slug: "ubuntu"
+description: "Ubuntu 22.04 LTS with XFCE desktop environment"
+icon: "box"
+version: "1.0.0"
+
+resources:
+  cpu_limit: 2.0
+  memory_limit: "2g"
+  disk_limit: "10g"
+  gpu_enabled: false
+
+options:
+  persistent_home: true
+  security_relaxed: false
+  enabled: true
+  is_default: false
+  sort_order: 3

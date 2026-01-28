@@ -1,0 +1,18 @@
+name: "Alpine Light"
+slug: "alpine"
+description: "Lightweight Alpine Linux with XFCE (fast startup, minimal footprint)"
+icon: "zap"
+version: "1.0.0"
+
+resources:
+  cpu_limit: 1.0
+  memory_limit: "512m"
+  disk_limit: "5g"
+  gpu_enabled: false
+
+options:
+  persistent_home: true
+  security_relaxed: false
+  enabled: true
+  is_default: false
+  sort_order: 2
