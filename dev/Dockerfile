@@ -7,7 +7,7 @@
 
 FROM debian:12-slim
 
-LABEL maintainer="Kazma <admin@kazma.local>"
+LABEL maintainer="Kazma <admin@kazma.cloud>"
 LABEL description="Development desktop with Node.js, Python, Git"
 
 ENV DEBIAN_FRONTEND=noninteractive

@@ -7,7 +7,7 @@
 
 FROM alpine:3.19
 
-LABEL maintainer="Kazma <admin@kazma.local>"
+LABEL maintainer="Kazma <admin@kazma.cloud>"
 LABEL description="Lightweight Alpine Linux desktop with XFCE"
 
 # Install XFCE, XRDP and essential packages
