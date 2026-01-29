@@ -132,12 +132,24 @@ RUN mkdir -p /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml \
 COPY config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # =============================================================================
+# Skeleton Backup for Bind Mounts
+# =============================================================================
+
+# Create backup of directories that will be mounted
+# These are used to initialize empty bind mounts
+RUN mkdir -p /kazma/skel \
+    && cp -a /home /kazma/skel/ \
+    && cp -a /usr/local /kazma/skel/ \
+    && cp -a /opt /kazma/skel/
+
+# =============================================================================
 # Startup Scripts
 # =============================================================================
 
-COPY scripts/startup.sh /startup.sh
-COPY scripts/configure-user.sh /configure-user.sh
-RUN chmod +x /startup.sh /configure-user.sh
+# Startup script - placed in /kazma which won't be mounted over
+COPY scripts/startup.sh /kazma/startup.sh
+COPY scripts/configure-user.sh /kazma/configure-user.sh
+RUN chmod +x /kazma/startup.sh /kazma/configure-user.sh
 
 # =============================================================================
 # Health Check
@@ -161,5 +173,5 @@ ENV DESKTOP_PASS=""
 WORKDIR /home/${DESKTOP_USER}
 
 # Entry point
-ENTRYPOINT ["/startup.sh"]
+ENTRYPOINT ["/kazma/startup.sh"]
 

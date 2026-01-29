@@ -95,9 +95,16 @@ RUN mkdir -p /etc/supervisor.d \
     && echo 'autorestart=true' >> /etc/supervisord.conf \
     && echo 'priority=200' >> /etc/supervisord.conf
 
-# Startup script
-COPY scripts/startup.sh /usr/local/bin/startup.sh
-RUN chmod +x /usr/local/bin/startup.sh
+# Create backup of directories that will be mounted
+# These are used to initialize empty bind mounts
+RUN mkdir -p /kazma/skel \
+    && cp -a /home /kazma/skel/ \
+    && cp -a /usr/local /kazma/skel/ \
+    && cp -a /opt /kazma/skel/
+
+# Startup script - placed in /kazma which won't be mounted over
+COPY scripts/startup.sh /kazma/startup.sh
+RUN chmod +x /kazma/startup.sh
 
 # Create necessary directories
 RUN mkdir -p /var/log /var/run/xrdp /run/dbus \
@@ -108,5 +115,5 @@ EXPOSE 3389
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD netstat -ln | grep -q ':3389' || exit 1
 
-ENTRYPOINT ["/usr/local/bin/startup.sh"]
+ENTRYPOINT ["/kazma/startup.sh"]
 
