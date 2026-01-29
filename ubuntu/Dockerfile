@@ -47,6 +47,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio \
     # Supervisor
     supervisor \
+    # VPN support
+    wireguard-tools \
+    iproute2 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -89,9 +92,10 @@ RUN mkdir -p /kazma/skel \
     && cp -a /usr/local /kazma/skel/ \
     && cp -a /opt /kazma/skel/
 
-# Startup script - placed in /kazma which won't be mounted over
+# Startup scripts - placed in /kazma which won't be mounted over
 COPY scripts/startup.sh /kazma/startup.sh
-RUN chmod +x /kazma/startup.sh
+COPY scripts/proxy-setup.sh /kazma/proxy-setup.sh
+RUN chmod +x /kazma/startup.sh /kazma/proxy-setup.sh
 
 # Set up default XFCE settings with proper icon theme
 RUN mkdir -p /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml \

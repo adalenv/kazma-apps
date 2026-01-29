@@ -157,5 +157,10 @@ fi
 # Start PulseAudio as the desktop user
 su - $DESKTOP_USER -c "pulseaudio --start --exit-idle-time=-1 --daemonize" 2>/dev/null || true
 
+# Configure Proxy/VPN (if configured)
+if [ -f /kazma/proxy-setup.sh ]; then
+    /kazma/proxy-setup.sh
+fi
+
 echo "Starting XRDP services..."
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

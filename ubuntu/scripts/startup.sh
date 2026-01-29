@@ -70,5 +70,10 @@ if [ ! -f /run/dbus/pid ]; then
     dbus-daemon --system --fork
 fi
 
+# Configure Proxy/VPN (if configured)
+if [ -f /kazma/proxy-setup.sh ]; then
+    /kazma/proxy-setup.sh
+fi
+
 echo "Starting XRDP services..."
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

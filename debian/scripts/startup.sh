@@ -130,6 +130,13 @@ rm -f /var/run/xrdp/*.pid 2>/dev/null || true
 rm -f /var/run/xrdp-sesman.pid 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
+# Configure Proxy/VPN (if configured)
+# -----------------------------------------------------------------------------
+if [ -f /kazma/proxy-setup.sh ]; then
+    /kazma/proxy-setup.sh
+fi
+
+# -----------------------------------------------------------------------------
 # Start Services via Supervisor
 # -----------------------------------------------------------------------------
 echo "Starting XRDP services..."

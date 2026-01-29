@@ -53,6 +53,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     # Network utilities (for health checks)
     netcat-openbsd \
+    # VPN support
+    wireguard-tools \
+    iproute2 \
     # Clean up
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
@@ -146,10 +149,11 @@ RUN mkdir -p /kazma/skel \
 # Startup Scripts
 # =============================================================================
 
-# Startup script - placed in /kazma which won't be mounted over
+# Startup scripts - placed in /kazma which won't be mounted over
 COPY scripts/startup.sh /kazma/startup.sh
 COPY scripts/configure-user.sh /kazma/configure-user.sh
-RUN chmod +x /kazma/startup.sh /kazma/configure-user.sh
+COPY scripts/proxy-setup.sh /kazma/proxy-setup.sh
+RUN chmod +x /kazma/startup.sh /kazma/configure-user.sh /kazma/proxy-setup.sh
 
 # =============================================================================
 # Health Check

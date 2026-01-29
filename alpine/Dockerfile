@@ -40,6 +40,8 @@ RUN apk add --no-cache \
     net-tools \
     # Supervisor
     supervisor \
+    # VPN support
+    wireguard-tools \
     && rm -rf /var/cache/apk/*
 
 # Create desktop user
@@ -102,9 +104,10 @@ RUN mkdir -p /kazma/skel \
     && cp -a /usr/local /kazma/skel/ \
     && cp -a /opt /kazma/skel/
 
-# Startup script - placed in /kazma which won't be mounted over
+# Startup scripts - placed in /kazma which won't be mounted over
 COPY scripts/startup.sh /kazma/startup.sh
-RUN chmod +x /kazma/startup.sh
+COPY scripts/proxy-setup.sh /kazma/proxy-setup.sh
+RUN chmod +x /kazma/startup.sh /kazma/proxy-setup.sh
 
 # Create necessary directories
 RUN mkdir -p /var/log /var/run/xrdp /run/dbus \
