@@ -6,7 +6,7 @@
 
 FROM ubuntu:22.04
 
-LABEL maintainer="Kazma <admin@kazma.cloud>"
+LABEL maintainer="Kazma <info@kazma.cloud>"
 LABEL description="Ubuntu 22.04 desktop with XFCE"
 
 ENV DEBIAN_FRONTEND=noninteractive
