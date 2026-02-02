@@ -54,6 +54,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # VPN support
     wireguard-tools \
     iproute2 \
+    openresolv \
     # Dependencies for Chrome/AnyDesk
     libxss1 \
     libappindicator3-1 \
