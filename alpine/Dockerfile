@@ -40,8 +40,9 @@ RUN apk add --no-cache \
     net-tools \
     # Supervisor
     supervisor \
-    # VPN support
+    # VPN and firewall support
     wireguard-tools \
+    iptables \
     && rm -rf /var/cache/apk/*
 
 # Create desktop user

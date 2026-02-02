@@ -47,9 +47,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio \
     # Supervisor
     supervisor \
-    # VPN support
+    # VPN and firewall support
     wireguard-tools \
     iproute2 \
+    iptables \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
