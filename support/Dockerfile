@@ -51,10 +51,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pulseaudio \
     # Supervisor
     supervisor \
-    # VPN support
+    # VPN and proxy support
     wireguard-tools \
     iproute2 \
     openresolv \
+    iptables \
+    proxychains4 \
     # Dependencies for Chrome/AnyDesk
     libxss1 \
     libappindicator3-1 \

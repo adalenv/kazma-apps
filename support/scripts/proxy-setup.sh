@@ -14,22 +14,101 @@ echo "Checking proxy/VPN configuration..."
 if [ -f /etc/wireguard/wg0.conf ]; then
     echo "WireGuard configuration found, starting VPN..."
     
-    # Ensure WireGuard module is available (may need host support)
-    if command -v wg-quick &> /dev/null; then
-        wg-quick up wg0 2>&1 || {
-            echo "WARNING: Failed to start WireGuard. This may require host kernel support."
-            echo "Make sure the host has WireGuard module loaded."
-        }
-        
-        # Verify WireGuard is running
-        if ip link show wg0 &> /dev/null; then
-            echo "WireGuard VPN started successfully"
+    # Check if wg-quick is available
+    if ! command -v wg-quick &> /dev/null; then
+        echo "WARNING: wg-quick not found, WireGuard not available"
+    else
+        # Try to start WireGuard
+        # First, try with standard wg-quick (works if container has proper privileges)
+        if wg-quick up wg0 2>&1; then
+            echo "WireGuard VPN started successfully with wg-quick"
             wg show wg0
         else
-            echo "WARNING: WireGuard interface not found after startup"
+            echo "Standard wg-quick failed, trying manual setup..."
+            
+            # Manual WireGuard setup (works in more restricted containers)
+            # This avoids the iptables and sysctl requirements
+            
+            # Parse the config file for manual setup
+            WG_CONF="/etc/wireguard/wg0.conf"
+            
+            # Extract values from config
+            PRIVATE_KEY=$(grep -i "^PrivateKey" "$WG_CONF" | cut -d'=' -f2- | tr -d ' ')
+            ADDRESS=$(grep -i "^Address" "$WG_CONF" | cut -d'=' -f2- | tr -d ' ' | cut -d',' -f1)
+            DNS=$(grep -i "^DNS" "$WG_CONF" | cut -d'=' -f2- | tr -d ' ')
+            PEER_PUBLIC_KEY=$(grep -i "^PublicKey" "$WG_CONF" | cut -d'=' -f2- | tr -d ' ')
+            ENDPOINT=$(grep -i "^Endpoint" "$WG_CONF" | cut -d'=' -f2- | tr -d ' ')
+            ALLOWED_IPS=$(grep -i "^AllowedIPs" "$WG_CONF" | cut -d'=' -f2- | tr -d ' ')
+            PERSISTENT_KEEPALIVE=$(grep -i "^PersistentKeepalive" "$WG_CONF" | cut -d'=' -f2- | tr -d ' ')
+            
+            if [ -n "$PRIVATE_KEY" ] && [ -n "$ADDRESS" ] && [ -n "$PEER_PUBLIC_KEY" ] && [ -n "$ENDPOINT" ]; then
+                echo "Attempting manual WireGuard configuration..."
+                
+                # Create interface
+                ip link add wg0 type wireguard 2>/dev/null || true
+                
+                # Set private key
+                echo "$PRIVATE_KEY" | wg set wg0 private-key /dev/stdin
+                
+                # Set peer
+                if [ -n "$PERSISTENT_KEEPALIVE" ]; then
+                    wg set wg0 peer "$PEER_PUBLIC_KEY" endpoint "$ENDPOINT" allowed-ips "${ALLOWED_IPS:-0.0.0.0/0}" persistent-keepalive "$PERSISTENT_KEEPALIVE"
+                else
+                    wg set wg0 peer "$PEER_PUBLIC_KEY" endpoint "$ENDPOINT" allowed-ips "${ALLOWED_IPS:-0.0.0.0/0}"
+                fi
+                
+                # Set address and bring up
+                ip addr add "$ADDRESS" dev wg0 2>/dev/null || true
+                ip link set wg0 up
+                
+                # Add routes for allowed IPs (simplified - just default route through wg0)
+                # This is a simpler approach that doesn't require iptables
+                if [ "$ALLOWED_IPS" = "0.0.0.0/0" ] || [ "$ALLOWED_IPS" = "0.0.0.0/0, ::/0" ]; then
+                    # Get the gateway for the endpoint
+                    ENDPOINT_IP=$(echo "$ENDPOINT" | cut -d':' -f1)
+                    CURRENT_GW=$(ip route | grep default | awk '{print $3}' | head -1)
+                    CURRENT_DEV=$(ip route | grep default | awk '{print $5}' | head -1)
+                    
+                    if [ -n "$CURRENT_GW" ] && [ -n "$ENDPOINT_IP" ]; then
+                        # Add route to endpoint via current gateway
+                        ip route add "$ENDPOINT_IP/32" via "$CURRENT_GW" dev "$CURRENT_DEV" 2>/dev/null || true
+                        # Replace default route to go through WireGuard
+                        ip route replace default dev wg0 2>/dev/null || true
+                    fi
+                fi
+                
+                # Configure DNS if specified
+                if [ -n "$DNS" ]; then
+                    # Backup and update resolv.conf
+                    cp /etc/resolv.conf /etc/resolv.conf.backup 2>/dev/null || true
+                    echo "# WireGuard DNS" > /etc/resolv.conf
+                    for dns_server in $(echo "$DNS" | tr ',' ' '); do
+                        echo "nameserver $dns_server" >> /etc/resolv.conf
+                    done
+                fi
+                
+                # Verify
+                if ip link show wg0 &> /dev/null && [ "$(cat /sys/class/net/wg0/operstate 2>/dev/null)" = "unknown" ] || ip link show wg0 | grep -q "UP"; then
+                    echo "WireGuard VPN started successfully (manual setup)"
+                    wg show wg0
+                else
+                    echo "WARNING: WireGuard manual setup may have issues"
+                    ip link show wg0 2>/dev/null || echo "Interface wg0 not found"
+                fi
+            else
+                echo "WARNING: Could not parse WireGuard config for manual setup"
+                echo "Missing required fields (PrivateKey, Address, PublicKey, or Endpoint)"
+            fi
         fi
-    else
-        echo "WARNING: wg-quick not found, WireGuard not available"
+        
+        # Final verification
+        if ip link show wg0 &> /dev/null; then
+            echo "WireGuard interface is up"
+        else
+            echo "WARNING: WireGuard interface not found after setup attempts"
+            echo "This may require running the container with additional privileges:"
+            echo "  --cap-add=NET_ADMIN --sysctl net.ipv4.conf.all.src_valid_mark=1"
+        fi
     fi
 fi
 
@@ -39,34 +118,94 @@ fi
 # SOCKS proxy is configured via environment variables set by the spawner:
 # ALL_PROXY, HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy, NO_PROXY
 
-if [ -n "$ALL_PROXY" ] || [ -n "$KAZMA_PROXY" ]; then
-    echo "SOCKS proxy configured"
+if [ -n "$ALL_PROXY" ] || [ -n "$KAZMA_PROXY" ] || [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
+    echo "Proxy configuration detected, setting up..."
+    
+    # Determine proxy URL
+    PROXY_URL="${ALL_PROXY:-${KAZMA_PROXY:-${HTTP_PROXY:-$HTTPS_PROXY}}}"
     
     # Create system-wide proxy configuration for all users
-    cat > /etc/profile.d/kazma-proxy.sh << 'PROXYEOF'
+    cat > /etc/profile.d/kazma-proxy.sh << EOF
 # Kazma Proxy Configuration
-export ALL_PROXY="${ALL_PROXY}"
-export HTTP_PROXY="${HTTP_PROXY}"
-export HTTPS_PROXY="${HTTPS_PROXY}"
-export http_proxy="${http_proxy:-$HTTP_PROXY}"
-export https_proxy="${https_proxy:-$HTTPS_PROXY}"
-export NO_PROXY="${NO_PROXY:-localhost,127.0.0.1}"
-export no_proxy="${NO_PROXY}"
-PROXYEOF
+export ALL_PROXY="${ALL_PROXY:-$PROXY_URL}"
+export HTTP_PROXY="${HTTP_PROXY:-$PROXY_URL}"
+export HTTPS_PROXY="${HTTPS_PROXY:-$PROXY_URL}"
+export http_proxy="${http_proxy:-${HTTP_PROXY:-$PROXY_URL}}"
+export https_proxy="${https_proxy:-${HTTPS_PROXY:-$PROXY_URL}}"
+export NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,::1}"
+export no_proxy="\$NO_PROXY"
+EOF
     
-    # Make proxy settings available to current session
     chmod 644 /etc/profile.d/kazma-proxy.sh
     
-    # Also set for apt if present (Debian/Ubuntu)
+    # Source it for current session
+    source /etc/profile.d/kazma-proxy.sh
+    
+    # Configure apt proxy (Debian/Ubuntu)
     if [ -d /etc/apt/apt.conf.d ]; then
         if [ -n "$HTTP_PROXY" ]; then
-            echo "Acquire::http::Proxy \"${HTTP_PROXY}\";" > /etc/apt/apt.conf.d/99proxy
-            echo "Acquire::https::Proxy \"${HTTPS_PROXY}\";" >> /etc/apt/apt.conf.d/99proxy
+            cat > /etc/apt/apt.conf.d/99proxy << EOF
+Acquire::http::Proxy "${HTTP_PROXY}";
+Acquire::https::Proxy "${HTTPS_PROXY:-$HTTP_PROXY}";
+EOF
         fi
     fi
     
-    echo "Proxy environment variables configured for all users"
-    echo "  ALL_PROXY: ${ALL_PROXY}"
+    # Configure git proxy
+    if command -v git &> /dev/null; then
+        git config --system http.proxy "${HTTP_PROXY:-$PROXY_URL}" 2>/dev/null || true
+        git config --system https.proxy "${HTTPS_PROXY:-$PROXY_URL}" 2>/dev/null || true
+    fi
+    
+    # Configure wget proxy
+    if [ -n "$HTTP_PROXY" ]; then
+        cat > /etc/wgetrc.d/proxy 2>/dev/null << EOF || true
+use_proxy = on
+http_proxy = ${HTTP_PROXY}
+https_proxy = ${HTTPS_PROXY:-$HTTP_PROXY}
+EOF
+    fi
+    
+    # Configure curl proxy (via environment is usually enough, but also curlrc)
+    mkdir -p /etc/skel
+    cat > /etc/skel/.curlrc << EOF
+proxy = "${PROXY_URL}"
+EOF
+    
+    # Copy to desktop user if exists
+    if [ -d /home/desktop ]; then
+        cp /etc/skel/.curlrc /home/desktop/.curlrc 2>/dev/null || true
+        chown desktop:desktop /home/desktop/.curlrc 2>/dev/null || true
+    fi
+    
+    # For SOCKS proxy specifically, configure additional tools
+    if echo "$PROXY_URL" | grep -qi "socks"; then
+        echo "SOCKS proxy detected: $PROXY_URL"
+        
+        # Create a wrapper script for applications that don't support SOCKS natively
+        # Using proxychains-ng if available, or tsocks
+        if command -v proxychains4 &> /dev/null || command -v proxychains &> /dev/null; then
+            PROXY_HOST=$(echo "$PROXY_URL" | sed -E 's|socks[45]?://||' | cut -d':' -f1)
+            PROXY_PORT=$(echo "$PROXY_URL" | sed -E 's|socks[45]?://||' | cut -d':' -f2 | cut -d'/' -f1)
+            PROXY_TYPE="socks5"
+            echo "$PROXY_URL" | grep -qi "socks4" && PROXY_TYPE="socks4"
+            
+            cat > /etc/proxychains.conf << EOF
+# Kazma SOCKS Proxy Configuration
+strict_chain
+proxy_dns
+tcp_read_time_out 15000
+tcp_connect_time_out 8000
+
+[ProxyList]
+$PROXY_TYPE $PROXY_HOST $PROXY_PORT
+EOF
+            echo "Proxychains configured for SOCKS proxy"
+        fi
+    fi
+    
+    echo "Proxy environment configured for all users"
+    echo "  Proxy URL: ${PROXY_URL}"
 fi
 
 echo "Proxy/VPN setup complete"
