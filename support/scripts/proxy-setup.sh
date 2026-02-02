@@ -208,4 +208,106 @@ EOF
     echo "  Proxy URL: ${PROXY_URL}"
 fi
 
+# -----------------------------------------------------------------------------
+# Kill Switch Setup
+# -----------------------------------------------------------------------------
+# If KAZMA_KILL_SWITCH is set, block all internet if VPN/proxy is not connected
+
+if [ "$KAZMA_KILL_SWITCH" = "1" ]; then
+    echo "Kill switch enabled, configuring firewall rules..."
+    
+    # Check if iptables is available
+    if ! command -v iptables &> /dev/null; then
+        echo "WARNING: iptables not found, kill switch cannot be configured"
+    else
+        # For WireGuard VPN
+        if [ -n "$KAZMA_VPN" ] && [ "$KAZMA_VPN" = "wireguard" ]; then
+            # Check if WireGuard interface exists
+            if ip link show wg0 &> /dev/null; then
+                echo "Configuring kill switch for WireGuard..."
+                
+                # Allow loopback
+                iptables -A OUTPUT -o lo -j ACCEPT
+                iptables -A INPUT -i lo -j ACCEPT
+                
+                # Allow traffic through WireGuard interface
+                iptables -A OUTPUT -o wg0 -j ACCEPT
+                iptables -A INPUT -i wg0 -j ACCEPT
+                
+                # Allow established connections
+                iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+                iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+                
+                # Allow traffic to WireGuard endpoint (so we can establish the tunnel)
+                WG_ENDPOINT=$(grep -i "^Endpoint" /etc/wireguard/wg0.conf 2>/dev/null | cut -d'=' -f2- | tr -d ' ' | cut -d':' -f1)
+                if [ -n "$WG_ENDPOINT" ]; then
+                    iptables -A OUTPUT -d "$WG_ENDPOINT" -j ACCEPT
+                fi
+                
+                # Allow local network (for RDP connection from Guacamole)
+                iptables -A INPUT -s 172.16.0.0/12 -j ACCEPT
+                iptables -A OUTPUT -d 172.16.0.0/12 -j ACCEPT
+                iptables -A INPUT -s 10.0.0.0/8 -j ACCEPT
+                iptables -A OUTPUT -d 10.0.0.0/8 -j ACCEPT
+                iptables -A INPUT -s 192.168.0.0/16 -j ACCEPT
+                iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT
+                
+                # Block all other outgoing traffic
+                iptables -A OUTPUT -j DROP
+                
+                echo "Kill switch configured: Internet blocked unless WireGuard is connected"
+            else
+                echo "WARNING: WireGuard interface not found, kill switch blocking all internet"
+                # Block everything except local network
+                iptables -A OUTPUT -o lo -j ACCEPT
+                iptables -A INPUT -i lo -j ACCEPT
+                iptables -A INPUT -s 172.16.0.0/12 -j ACCEPT
+                iptables -A OUTPUT -d 172.16.0.0/12 -j ACCEPT
+                iptables -A INPUT -s 10.0.0.0/8 -j ACCEPT
+                iptables -A OUTPUT -d 10.0.0.0/8 -j ACCEPT
+                iptables -A INPUT -s 192.168.0.0/16 -j ACCEPT
+                iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT
+                iptables -A OUTPUT -j DROP
+            fi
+        fi
+        
+        # For SOCKS proxy
+        if [ -n "$KAZMA_PROXY" ] && [ "$KAZMA_PROXY" = "socks5" ]; then
+            echo "Configuring kill switch for SOCKS proxy..."
+            
+            # Extract proxy host and port
+            PROXY_HOST=$(echo "$ALL_PROXY" | sed -E 's|socks[45]?://([^:@]+@)?||' | cut -d':' -f1)
+            PROXY_PORT=$(echo "$ALL_PROXY" | sed -E 's|socks[45]?://([^:@]+@)?||' | cut -d':' -f2 | cut -d'/' -f1)
+            
+            if [ -n "$PROXY_HOST" ] && [ -n "$PROXY_PORT" ]; then
+                # Allow loopback
+                iptables -A OUTPUT -o lo -j ACCEPT
+                iptables -A INPUT -i lo -j ACCEPT
+                
+                # Allow established connections
+                iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+                iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+                
+                # Allow traffic to SOCKS proxy
+                iptables -A OUTPUT -d "$PROXY_HOST" -p tcp --dport "$PROXY_PORT" -j ACCEPT
+                
+                # Allow local network (for RDP connection from Guacamole)
+                iptables -A INPUT -s 172.16.0.0/12 -j ACCEPT
+                iptables -A OUTPUT -d 172.16.0.0/12 -j ACCEPT
+                iptables -A INPUT -s 10.0.0.0/8 -j ACCEPT
+                iptables -A OUTPUT -d 10.0.0.0/8 -j ACCEPT
+                iptables -A INPUT -s 192.168.0.0/16 -j ACCEPT
+                iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT
+                
+                # Block all other outgoing traffic
+                iptables -A OUTPUT -j DROP
+                
+                echo "Kill switch configured: Internet only accessible through SOCKS proxy at $PROXY_HOST:$PROXY_PORT"
+            else
+                echo "WARNING: Could not parse SOCKS proxy address, kill switch not configured"
+            fi
+        fi
+    fi
+fi
+
 echo "Proxy/VPN setup complete"
