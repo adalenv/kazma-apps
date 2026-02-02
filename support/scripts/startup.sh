@@ -103,22 +103,9 @@ mkdir -p "$USER_HOME/.config/pulse"
 chown -R $DESKTOP_USER:$DESKTOP_USER /run/user/1000 2>/dev/null || true
 chown -R $DESKTOP_USER:$DESKTOP_USER "$USER_HOME/.config/pulse" 2>/dev/null || true
 
-# Create autostart script to load XRDP audio modules when desktop starts
-mkdir -p "$USER_HOME/.config/autostart"
-cat > "$USER_HOME/.config/autostart/load-xrdp-audio.desktop" << 'EOF'
-[Desktop Entry]
-Type=Application
-Name=Load XRDP Audio
-Exec=/usr/local/bin/load-xrdp-audio.sh
-Hidden=false
-NoDisplay=true
-X-GNOME-Autostart-enabled=true
-EOF
-chown $DESKTOP_USER:$DESKTOP_USER "$USER_HOME/.config/autostart/load-xrdp-audio.desktop"
-
-# Create the audio loading script (if not already present from skeleton)
-if [ ! -f /usr/local/bin/load-xrdp-audio.sh ]; then
-    cat > /usr/local/bin/load-xrdp-audio.sh << 'SCRIPT'
+# Create the audio loading script first (before autostart references it)
+mkdir -p /usr/local/bin
+cat > /usr/local/bin/load-xrdp-audio.sh << 'SCRIPT'
 #!/bin/bash
 # Wait for XRDP to be fully ready
 sleep 3
@@ -151,8 +138,20 @@ if [ -S "$XRDP_SOCKET_PATH/$SINK_SOCKET" ]; then
     fi
 fi
 SCRIPT
-    chmod +x /usr/local/bin/load-xrdp-audio.sh
-fi
+chmod +x /usr/local/bin/load-xrdp-audio.sh
+
+# Create autostart script to load XRDP audio modules when desktop starts
+mkdir -p "$USER_HOME/.config/autostart"
+cat > "$USER_HOME/.config/autostart/load-xrdp-audio.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Load XRDP Audio
+Exec=/usr/local/bin/load-xrdp-audio.sh
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+EOF
+chown $DESKTOP_USER:$DESKTOP_USER "$USER_HOME/.config/autostart/load-xrdp-audio.desktop"
 
 # Start PulseAudio as the desktop user
 su - $DESKTOP_USER -c "pulseaudio --start --exit-idle-time=-1 --daemonize" 2>/dev/null || true
